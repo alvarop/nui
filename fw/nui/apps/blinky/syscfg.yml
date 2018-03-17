@@ -1,0 +1,5 @@
+syscfg.vals:
+    # Enable Console OS Ticks
+    CONSOLE_TICKS: 0
+    # Enable Console Prompt
+    CONSOLE_PROMPT: 0
