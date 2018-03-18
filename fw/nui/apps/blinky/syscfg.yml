@@ -1,4 +1,6 @@
 syscfg.vals:
+    # Timer used for IR
+    TIMER_1: 1
     # Enable Console OS Ticks
     CONSOLE_TICKS: 0
     # Enable Console Prompt
