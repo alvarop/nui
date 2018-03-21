@@ -1,22 +1,3 @@
-/**
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- * 
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
- */
-
 #include <assert.h>
 #include <string.h>
 #include <stdbool.h>
@@ -30,33 +11,52 @@
 
 #define IR_PIN (4)
 
-#define BLINK_TASK_PRI         (10)
-#define BLINK_STACK_SIZE       (256)
-struct os_task blink_task;
-os_stack_t blink_task_stack[BLINK_STACK_SIZE];
+#define NUI_TASK_PRI         (10)
+#define NUI_STACK_SIZE       (256)
+struct os_task nui_task;
+os_stack_t nui_task_stack[NUI_STACK_SIZE];
 
 typedef struct {
     uint32_t time;
     uint8_t value;
-} pulse_t;
+} edge_t;
 
-static pulse_t pulses[256];
-static uint16_t pulse_index;
+// Maximum number of pulse edges to store
+#define MAX_EDGES 128
 
-// static bool receiving = false;
-static uint8_t previous_val;
+// Timeout (in microseconds) before processing incoming data
+#define TIMEOUT_US 11000
 
-struct hal_timer ir_timer;
+static edge_t edges[MAX_EDGES];
+static uint16_t edge_index;
 
-struct os_callout ir_callout;
+struct hal_timer ir_timeout_timer;
+
+static struct os_mutex ir_processing_mutex;
 
 static void ir_irq(void *arg) {
-    os_callout_reset(&ir_callout, OS_TICKS_PER_SEC/32);
-    pulses[pulse_index].time = hal_timer_read(1);
-    pulses[pulse_index].value = hal_gpio_read(IR_PIN);
-    pulse_index++;
+    os_error_t err;
+
+    // If we're currently processing a packet, ignore incoming data
+    // Not an issue now, but maybe once BLE is going it could cause problems
+    err = os_mutex_pend(&ir_processing_mutex, 0);
+    if(err == OS_OK) {
+        // Store edge timestamp and current value
+        edges[edge_index].time = hal_timer_read(1);
+        edges[edge_index].value = hal_gpio_read(IR_PIN);
+
+        edge_index++;
+
+        err = os_mutex_release(&ir_processing_mutex);
+        assert(err == OS_OK);
+
+        // Re-set ir timeout
+        hal_timer_stop(&ir_timeout_timer);
+        hal_timer_start(&ir_timeout_timer, TIMEOUT_US);
+    }
 }
 
+// NEC Decoding state machine states
 typedef enum {
     LEADING_PULSE,
     LEADING_SPACE,
@@ -64,37 +64,42 @@ typedef enum {
     BIT_SPACE,
 } decode_state_t;
 
+// Helper functions to determine if a pulse meets certain criteria
 static inline bool is_leading_pulse(int32_t duration, uint8_t value) {
-    return (value == 1 && duration > 8500 && duration < 9500);
+    return (value == 1 && duration > 8000 && duration < 10000);
 }
 
 static inline bool is_leading_space(int32_t duration, uint8_t value) {
-    return (value == 0 && duration > 4000 && duration < 5000);
+    return (value == 0 && duration > 3500 && duration < 5500);
 }
 
 static inline bool is_bit_pulse(int32_t duration, uint8_t value) {
-    return (value == 1 && duration > 510 && duration < 610);
+    return (value == 1 && duration > 400 && duration < 700);
 }
 
 static inline bool is_bit_space_0(int32_t duration, uint8_t value) {
-    return (value == 0 && duration > 510 && duration < 610);
+    return (value == 0 && duration > 400 && duration < 700);
 }
 
 static inline bool is_bit_space_1(int32_t duration, uint8_t value) {
-    return (value == 0 && duration > 1580 && duration < 1780);
+    return (value == 0 && duration > 1400 && duration < 1900);
 }
 
-uint32_t decode() {
+// State machine to decode "NEC" IR encoded data
+// See:
+// http://techdocs.altium.com/display/FPGA/NEC+Infrared+Transmission+Protocol
+uint16_t decode(uint32_t *result) {
     decode_state_t state = LEADING_PULSE;
     bool decoding = true;
     uint32_t index = 1;
-    uint32_t result = 0;
 
-    console_printf("Decoding: ");
+    assert(result != NULL);
 
-    while (decoding && index < pulse_index) {
-        int32_t duration = pulses[index].time - pulses[index - 1].time;
-        uint8_t value = pulses[index].value;
+    *result = 0;
+
+    while (decoding && index < edge_index) {
+        int32_t duration = edges[index].time - edges[index - 1].time;
+        uint8_t value = edges[index].value;
         switch(state) {
             case LEADING_PULSE: {
                 if(is_leading_pulse(duration, value)) {
@@ -129,12 +134,12 @@ uint32_t decode() {
 
             case BIT_SPACE: {
                 if(is_bit_space_0(duration, value)) {
-                    result <<= 1;
+                    (*result) <<= 1;
                     state = BIT_PULSE;
                     index++;
                 } else if(is_bit_space_1(duration, value)) {
-                    result <<= 1;
-                    result |= 1;
+                    (*result) <<= 1;
+                    (*result) |= 1;
                     state = BIT_PULSE;
                     index++;
                 } else {
@@ -146,24 +151,20 @@ uint32_t decode() {
         }
     }
 
-    return result;
+    // Return the total number of edges (could be useful for repeat code, etc)
+    return edge_index;
 }
 
+// These are the IR codes for the "AUX" setting on my particular Toshiba remote
 typedef enum {
   AUX_VOL_DOWN = 0x4BB6C03F,
   AUX_VOL_UP = 0x4BB640BF,
   AUX_MUTE = 0x4BB6A05F
 } commands_t;
 
-void ir_callout_cb(struct os_event *ev) {
-    console_printf("pulses: %d\n", pulse_index);
-    for(uint16_t index = 1; index < pulse_index; index++) {
-        console_printf("%ld [%d]\n",
-            pulses[index].time - pulses[index - 1].time, pulses[index].value);
-    }
-    uint32_t result = decode();
-
-    switch (result) {
+// Do something with the received data
+static void process_ir_command(uint32_t command, uint16_t num_edges) {
+    switch (command) {
         case AUX_VOL_DOWN: {
             console_printf("Volume down!\n");
             break;
@@ -176,23 +177,57 @@ void ir_callout_cb(struct os_event *ev) {
             console_printf("Mute!\n");
             break;
         }
+        default: {
+            // Do something with other codes?
+            // console_printf("%08lX - %ld\n", command, num_edges);
+        }
     }
-
-    pulse_index = 0;
 }
 
-void blink_task_func(void *arg) {
+// Called to process data after not receiving IR edges for <TIMEOUT_US>
+static void ir_timeout_cb(void *arg) {
+    uint32_t result;
+    uint16_t num_edges;
+    os_error_t err;
+
+    // Make sure we don't process more IR edges while we decode the packet
+    err = os_mutex_pend(&ir_processing_mutex, 0xFFFFFFFF);
+    assert(err == OS_OK);
+
+    num_edges = decode(&result);
+
+    // Reset edge index so we can receive the next packet!
+    edge_index = 0;
+
+    // Let the IR irq do it's thing again
+    err = os_mutex_release(&ir_processing_mutex);
+    assert(err == OS_OK);
+
+    // Do something with the received data!
+    process_ir_command(result, num_edges);
+}
+
+void nui_task_func(void *arg) {
+
+    os_error_t err;
+
+    // Use this mutex to make sure IR data isn't corrupted mid-decoding
+    err = os_mutex_init(&ir_processing_mutex);
+    assert(err == OS_OK);
 
     hal_gpio_init_out(LED_BLINK_PIN, 1);
 
     hal_gpio_irq_init(IR_PIN, ir_irq, NULL,
         HAL_GPIO_TRIG_BOTH, HAL_GPIO_PULL_NONE);
 
-    previous_val = hal_gpio_read(IR_PIN);
-    pulse_index = 0;
+    // Variable used to keep track of current pulse edge
+    edge_index = 0;
 
-    os_callout_init(&ir_callout, os_eventq_dflt_get(), ir_callout_cb, NULL);
+    // 1MHz timer to measure incoming pulse edge times
     hal_timer_config(1, 1000000);
+
+    // Timeout used to process a packet after some time without edges
+    hal_timer_set_cb(1, &ir_timeout_timer, ir_timeout_cb, NULL);
 
     hal_gpio_irq_enable(IR_PIN);
 
@@ -208,14 +243,14 @@ int main(int argc, char **argv) {
     sysinit();
 
     os_task_init(
-        &blink_task,
-        "blink_task",
-        blink_task_func,
+        &nui_task,
+        "nui_task",
+        nui_task_func,
         NULL,
-        BLINK_TASK_PRI,
+        NUI_TASK_PRI,
         OS_WAIT_FOREVER,
-        blink_task_stack,
-        BLINK_STACK_SIZE);
+        nui_task_stack,
+        NUI_STACK_SIZE);
 
     while (1) {
         os_eventq_run(os_eventq_dflt_get());
