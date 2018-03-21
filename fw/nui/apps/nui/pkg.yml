@@ -1,0 +1,11 @@
+pkg.name: apps/nui
+pkg.type: app
+pkg.description: Nui IR volume controller
+pkg.author: Alvaro Prieto
+pkg.homepage: "https://alvarop.com/"
+pkg.keywords:
+
+pkg.deps:
+    - "@apache-mynewt-core/kernel/os"
+    - "@apache-mynewt-core/hw/hal"
+    - "@apache-mynewt-core/sys/console/full"

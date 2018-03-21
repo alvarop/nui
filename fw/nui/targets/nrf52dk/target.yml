@@ -1,4 +1,4 @@
 ### Target: targets/nrf52dk
-target.app: "apps/blinky"
+target.app: "apps/nui"
 target.bsp: "hw/bsp/nrf52810dk"
 target.build_profile: "debug"
