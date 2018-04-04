@@ -28,27 +28,15 @@
 #include "hal/hal_bsp.h"
 #include "hal/hal_system.h"
 #include "hal/hal_flash.h"
-#include "hal/hal_spi.h"
 #include "hal/hal_watchdog.h"
 #include "hal/hal_i2c.h"
 #include "mcu/nrf52_hal.h"
-#if MYNEWT_VAL(UART_0) || MYNEWT_VAL(UART_1)
-#include "uart/uart.h"
-#endif
 #if MYNEWT_VAL(UART_0)
+#include "uart/uart.h"
 #include "uart_hal/uart_hal.h"
-#endif
-#if MYNEWT_VAL(UART_1)
-#include "uart_bitbang/uart_bitbang.h"
 #endif
 #include "os/os_dev.h"
 #include "bsp.h"
-#if MYNEWT_VAL(PWM)
-#include <pwm_nrf52/pwm_nrf52.h>
-#endif
-#if MYNEWT_VAL(SOFT_PWM)
-#include <soft_pwm/soft_pwm.h>
-#endif
 
 #if MYNEWT_VAL(UART_0)
 static struct uart_dev os_bsp_uart0;
@@ -57,58 +45,6 @@ static const struct nrf52_uart_cfg os_bsp_uart0_cfg = {
     .suc_pin_rx = MYNEWT_VAL(UART_0_PIN_RX),
     .suc_pin_rts = MYNEWT_VAL(UART_0_PIN_RTS),
     .suc_pin_cts = MYNEWT_VAL(UART_0_PIN_CTS),
-};
-#endif
-
-#if MYNEWT_VAL(UART_1)
-static struct uart_dev os_bsp_bitbang_uart1;
-static const struct uart_bitbang_conf os_bsp_uart1_cfg = {
-    .ubc_txpin = MYNEWT_VAL(UART_1_PIN_TX),
-    .ubc_rxpin = MYNEWT_VAL(UART_1_PIN_RX),
-    .ubc_cputimer_freq = MYNEWT_VAL(OS_CPUTIME_FREQ),
-};
-#endif
-
-#if MYNEWT_VAL(SPI_0_MASTER)
-/*
- * NOTE: Our HAL expects that the SS pin, if used, is treated as a gpio line
- * and is handled outside the SPI routines.
- */
-static const struct nrf52_hal_spi_cfg os_bsp_spi0m_cfg = {
-    .sck_pin      = 23,
-    .mosi_pin     = 24,
-    .miso_pin     = 25,
-};
-#endif
-
-#if MYNEWT_VAL(SPI_0_SLAVE)
-static const struct nrf52_hal_spi_cfg os_bsp_spi0s_cfg = {
-    .sck_pin      = 23,
-    .mosi_pin     = 24,
-    .miso_pin     = 25,
-    .ss_pin       = 22,
-};
-#endif
-
-#if MYNEWT_VAL(PWM_0)
-static struct pwm_dev os_bsp_pwm0;
-#endif
-#if MYNEWT_VAL(PWM_1)
-static struct pwm_dev os_bsp_pwm1;
-#endif
-#if MYNEWT_VAL(PWM_2)
-static struct pwm_dev os_bsp_pwm2;
-#endif
-#if MYNEWT_VAL(SOFT_PWM)
-static struct pwm_dev os_bsp_spwm;
-#endif
-
-
-#if MYNEWT_VAL(I2C_0)
-static const struct nrf52_hal_i2c_cfg hal_i2c_cfg = {
-    .scl_pin = 27,
-    .sda_pin = 26,
-    .i2c_frequency = 100    /* 100 kHz */
 };
 #endif
 
@@ -207,73 +143,14 @@ hal_bsp_init(void)
     assert(rc == 0);
 #endif
 
-#if MYNEWT_VAL(PWM_0)
-    rc = os_dev_create((struct os_dev *) &os_bsp_pwm0,
-                       "pwm0",
-                       OS_DEV_INIT_KERNEL,
-                       OS_DEV_INIT_PRIO_DEFAULT,
-                       nrf52_pwm_dev_init,
-                       NULL);
-    assert(rc == 0);
-#endif
-#if MYNEWT_VAL(PWM_1)
-    rc = os_dev_create((struct os_dev *) &os_bsp_pwm1,
-                       "pwm1",
-                       OS_DEV_INIT_KERNEL,
-                       OS_DEV_INIT_PRIO_DEFAULT,
-                       nrf52_pwm_dev_init,
-                       NULL);
-    assert(rc == 0);
-#endif
-#if MYNEWT_VAL(PWM_2)
-    rc = os_dev_create((struct os_dev *) &os_bsp_pwm2,
-                       "pwm2",
-                       OS_DEV_INIT_KERNEL,
-                       OS_DEV_INIT_PRIO_DEFAULT,
-                       nrf52_pwm_dev_init,
-                       NULL);
-    assert(rc == 0);
-#endif
-#if MYNEWT_VAL(SOFT_PWM)
-    rc = os_dev_create((struct os_dev *) &os_bsp_spwm,
-                       "spwm",
-                       OS_DEV_INIT_KERNEL,
-                       OS_DEV_INIT_PRIO_DEFAULT,
-                       soft_pwm_dev_init,
-                       NULL);
-    assert(rc == 0);
-#endif
-
-
 #if (MYNEWT_VAL(OS_CPUTIME_TIMER_NUM) >= 0)
     rc = os_cputime_init(MYNEWT_VAL(OS_CPUTIME_FREQ));
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(I2C_0)
-    rc = hal_i2c_init(0, (void *)&hal_i2c_cfg);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(SPI_0_MASTER)
-    rc = hal_spi_init(0, (void *)&os_bsp_spi0m_cfg, HAL_SPI_TYPE_MASTER);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(SPI_0_SLAVE)
-    rc = hal_spi_init(0, (void *)&os_bsp_spi0s_cfg, HAL_SPI_TYPE_SLAVE);
     assert(rc == 0);
 #endif
 
 #if MYNEWT_VAL(UART_0)
     rc = os_dev_create((struct os_dev *) &os_bsp_uart0, "uart0",
       OS_DEV_INIT_PRIMARY, 0, uart_hal_init, (void *)&os_bsp_uart0_cfg);
-    assert(rc == 0);
-#endif
-
-#if MYNEWT_VAL(UART_1)
-    rc = os_dev_create((struct os_dev *) &os_bsp_bitbang_uart1, "uart1",
-      OS_DEV_INIT_PRIMARY, 0, uart_bitbang_init, (void *)&os_bsp_uart1_cfg);
     assert(rc == 0);
 #endif
 

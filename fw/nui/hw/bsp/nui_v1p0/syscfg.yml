@@ -28,7 +28,7 @@ syscfg.defs:
         value:  1
     UART_0_PIN_TX:
         description: 'TX pin for UART0'
-        value:  6
+        value:  28
     UART_0_PIN_RX:
         description: 'RX pin for UART0'
         value:  8
@@ -38,16 +38,6 @@ syscfg.defs:
     UART_0_PIN_CTS:
         description: 'CTS pin for UART0'
         value: 7
-
-    UART_1:
-        description: 'Whether to enable bitbanger UART1'
-        value:  0
-    UART_1_PIN_TX:
-        description: 'TX pin for UART1'
-        value:  -1
-    UART_1_PIN_RX:
-        description: 'RX pin for UART1'
-        value:  -1
 
     TIMER_0:
         description: 'NRF52 Timer 0'
@@ -67,22 +57,6 @@ syscfg.defs:
     TIMER_5:
         description: 'NRF52 RTC 0'
         value:  0
-
-    PWM_0:
-        description: 'NRF52 PWM 0'
-        value: 0
-
-    PWM_1:
-        description: 'NRF52 PWM 1'
-        value: 0
-
-    PWM_2:
-        description: 'NRF52 PWM 2'
-        value: 0
-
-    PWM:
-        description: 'NRF52 PWM'
-        value: 0
 
 syscfg.defs.BLE_LP_CLOCK:
     TIMER_0:

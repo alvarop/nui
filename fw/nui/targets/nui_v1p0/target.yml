@@ -1,0 +1,4 @@
+### Target: targets/nui_v1p0
+target.app: "apps/nui"
+target.bsp: "hw/bsp/nui_v1p0"
+target.build_profile: "debug"

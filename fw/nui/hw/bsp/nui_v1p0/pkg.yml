@@ -17,14 +17,13 @@
 # under the License.
 #
 
-pkg.name: hw/bsp/nrf52810dk
+pkg.name: hw/bsp/nui_v1p0
 pkg.type: bsp
 pkg.description: BSP definition for the Nordic nRF52 Development Kit (PCA 10040) with an nrf52810
-pkg.author: "Apache Mynewt <dev@mynewt.apache.org>"
-pkg.homepage: "http://mynewt.apache.org/"
+pkg.author: "Alvaro Prieto <source@alvaroprieto.com>"
+pkg.homepage: "https://alvarop.com/"
 pkg.keywords:
-    - nrf52
-    - nrf52dk
+
 
 pkg.cflags:
     # Nordic SDK files require these defines.
@@ -47,23 +46,8 @@ pkg.cflags:
     - '-DRTC1_ENABLED=0'
     - '-DRTC2_ENABLED=0'
     - '-DSAADC_ENABLED=1'
-    - '-DSPI_MASTER_0_ENABLE=1'
-    - '-DSPI0_CONFIG_MISO_PIN=25'
-    - '-DSPI0_CONFIG_MOSI_PIN=24'
-    - '-DSPI0_CONFIG_SCK_PIN=23'
-    - '-DSPI0_ENABLED=1'
-    - '-DSPI0_USE_EASY_DMA=1'
-    - '-DSPI1_ENABLED=0'
-    - '-DSPI2_ENABLED=0'
-    - '-DSPIS0_CONFIG_MISO_PIN=25'
-    - '-DSPIS0_CONFIG_MOSI_PIN=24'
-    - '-DSPIS0_CONFIG_SCK_PIN=23'
-    - '-DSPIS0_ENABLED=1'
-    - '-DSPIS1_CONFIG_MISO_PIN=4'
-    - '-DSPIS1_CONFIG_MOSI_PIN=3'
-    - '-DSPIS1_CONFIG_SCK_PIN=2'
-    - '-DSPIS1_ENABLED=0'
-    - '-DSPIS2_ENABLED=0'
+    - '-DNRFX_SPIM_ENABLED=1'
+    - '-DNRFX_SPIM0_ENABLED=1'
     - '-DTIMER0_ENABLED=1'
     - '-DTIMER1_ENABLED=0'
     - '-DTIMER2_ENABLED=0'

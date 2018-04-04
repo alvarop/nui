@@ -19,8 +19,8 @@ OUTPUT_FORMAT ("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
 
 MEMORY
 {
-  FLASH (rx) : ORIGIN = 0x00000000, LENGTH = 0x30000
-  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 0x6000
+  FLASH (rx) : ORIGIN =  0x00042000, LENGTH = 0x3a000
+  RAM  (rwx) : ORIGIN =  0x20000000, LENGTH = 0x10000
 }
 
 /* Linker script to place sections and symbol values. Should be used together
@@ -50,15 +50,20 @@ MEMORY
  *   __bssnz_start__
  *   __bssnz_end__
  */
-ENTRY(Reset_Handler)
+ENTRY(Reset_Handler_split)
 
 SECTIONS
 {
+    .imghdr (NOLOAD):
+    {
+        . = . + 0x20;
+    } > FLASH
+
     .text :
     {
-        __isr_vector_start = .;
-        KEEP(*(.isr_vector))
-        __isr_vector_end = .;
+        __split_isr_vector_start = .;
+        KEEP(*(.isr_vector_split))
+        __split_isr_vector_end = .;
         *(.text*)
 
         KEEP(*(.init))
@@ -85,6 +90,11 @@ SECTIONS
     } > FLASH
 
 
+    .ARM.extab : ALIGN(4)
+    {
+        *(.ARM.extab* .gnu.linkonce.armextab.*)
+    } > FLASH
+
     .ARM.extab :
     {
         *(.ARM.extab* .gnu.linkonce.armextab.*)
@@ -101,18 +111,20 @@ SECTIONS
 
     __etext = .;
 
-    .vector_relocation :
+    /* save RAM used by the split image. This assumes that 
+     * the loader uses all the RAM up to its HeapBase  */
+    .loader_ram_contents :
     {
-        . = ALIGN(4);
-        __vector_tbl_reloc__ = .;
-        . = . + (__isr_vector_end - __isr_vector_start);
-        . = ALIGN(4);
+        _loader_ram_start = .;
+
+ 	/* this symbol comes from the loader linker */
+	. = . + (ABSOLUTE(__HeapBase_loader) - _loader_ram_start);
+        _loader_ram_end = .;
     } > RAM
 
-    .data : AT (__etext)
+    .data :
     {
         __data_start__ = .;
-        *(vtable)
         *(.data*)
 
         . = ALIGN(4);
@@ -128,7 +140,6 @@ SECTIONS
         *(.init_array)
         PROVIDE_HIDDEN (__init_array_end = .);
 
-
         . = ALIGN(4);
         /* finit data */
         PROVIDE_HIDDEN (__fini_array_start = .);
@@ -140,11 +151,15 @@ SECTIONS
         . = ALIGN(4);
         /* All data end */
         __data_end__ = .;
-    } > RAM
+    } > RAM AT > FLASH
 
-    /* Non-zeroed BSS.  This section is similar to BSS, with the following
-     * caveat:
+    /* Non-zeroed BSS.  This section is similar to BSS, with the following two
+     * caveats:
      *    1. It does not get zeroed at init-time.
+     *    2. You cannot use it as source memory for EasyDMA.
+     *
+     * This section exists because of a hardware defect; see errata 33 and 34
+     * in nrf52 errata sheet.
      */
     .bssnz :
     {
@@ -175,6 +190,8 @@ SECTIONS
     {
         *(.stack*)
     } > RAM
+
+    _ram_start = ORIGIN(RAM);
 
     /* Set stack top to end of RAM, and stack limit move down by
      * size of stack_dummy section */

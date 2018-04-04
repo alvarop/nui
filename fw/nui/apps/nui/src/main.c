@@ -8,8 +8,10 @@
 #include "bsp/bsp.h"
 #include "hal/hal_gpio.h"
 #include "hal/hal_timer.h"
+#include "hal/hal_spi.h"
 
-#define IR_PIN (4)
+#include "nrfx.h"
+#include "nrfx_spim.h"
 
 #define NUI_TASK_PRI         (10)
 #define NUI_STACK_SIZE       (256)
@@ -20,6 +22,10 @@ typedef struct {
     uint32_t time;
     uint8_t value;
 } edge_t;
+
+static nrfx_spim_t spi_dev = NRFX_SPIM_INSTANCE(0);
+static uint8_t volume = 128;
+static bool mute = false;
 
 // Maximum number of pulse edges to store
 #define MAX_EDGES 128
@@ -43,7 +49,7 @@ static void ir_irq(void *arg) {
     if(err == OS_OK) {
         // Store edge timestamp and current value
         edges[edge_index].time = hal_timer_read(1);
-        edges[edge_index].value = hal_gpio_read(IR_PIN);
+        edges[edge_index].value = hal_gpio_read(IR_IN_PIN);
 
         edge_index++;
 
@@ -162,19 +168,44 @@ typedef enum {
   AUX_MUTE = 0x4BB6A05F
 } commands_t;
 
+void update_volume() {
+    uint8_t vol[2] = {volume, volume};
+    nrfx_spim_xfer_desc_t xfer = NRFX_SPIM_XFER_TX(&vol, sizeof(vol));
+    hal_gpio_write(CS_N_PIN, 0);
+    // hal_spi_txrx(0, vol, NULL, sizeof(vol));
+    nrfx_spim_xfer(&spi_dev, &xfer, 0);
+    hal_gpio_write(CS_N_PIN, 1);
+
+    console_printf("volume %d\n", volume);
+}
+
 // Do something with the received data
 static void process_ir_command(uint32_t command, uint16_t num_edges) {
     switch (command) {
         case AUX_VOL_DOWN: {
             console_printf("Volume down!\n");
+            if (volume > 0) {
+                volume--;
+            }
+            update_volume();
             break;
         }
         case AUX_VOL_UP: {
             console_printf("Volume up!\n");
+            if (volume < 255) {
+                volume++;
+            }
+            update_volume();
             break;
         }
         case AUX_MUTE: {
             console_printf("Mute!\n");
+            mute = !mute;
+            if(mute) {
+                hal_gpio_write(MUTE_N_PIN, 0);
+            } else {
+                hal_gpio_write(MUTE_N_PIN, 1);
+            }
             break;
         }
         default: {
@@ -217,7 +248,7 @@ void nui_task_func(void *arg) {
 
     hal_gpio_init_out(LED_BLINK_PIN, 1);
 
-    hal_gpio_irq_init(IR_PIN, ir_irq, NULL,
+    hal_gpio_irq_init(IR_IN_PIN, ir_irq, NULL,
         HAL_GPIO_TRIG_BOTH, HAL_GPIO_PULL_NONE);
 
     // Variable used to keep track of current pulse edge
@@ -229,11 +260,34 @@ void nui_task_func(void *arg) {
     // Timeout used to process a packet after some time without edges
     hal_timer_set_cb(1, &ir_timeout_timer, ir_timeout_cb, NULL);
 
-    hal_gpio_irq_enable(IR_PIN);
+    hal_gpio_irq_enable(IR_IN_PIN);
+
+    hal_gpio_init_out(MUTE_N_PIN, 1);
+    hal_gpio_init_out(MISO_PIN, 0);
+    hal_gpio_init_out(SCK_PIN, 0);
+    hal_gpio_init_out(MOSI_PIN, 0);
+    hal_gpio_init_out(CS_N_PIN, 1);
+    hal_gpio_init_out(ZC_EN_PIN, 1);
+
+    nrfx_spim_config_t spi_config = NRFX_SPIM_DEFAULT_CONFIG;
+
+    spi_config.sck_pin = SCK_PIN;
+    spi_config.mosi_pin = MOSI_PIN;
+    spi_config.miso_pin = MISO_PIN;
+
+    uint32_t rval = nrfx_spim_init(&spi_dev, &spi_config, NULL, NULL);
+    if (rval != NRFX_SUCCESS) {
+        console_printf("spim_init=%08lX\n", rval);
+    } else {
+        console_printf("spim_init successfull\n");
+    }
+
+    // Set initial volume
+    update_volume();
 
     while (1) {
-        os_time_delay(OS_TICKS_PER_SEC);
         hal_gpio_toggle(LED_BLINK_PIN);
+        os_time_delay(OS_TICKS_PER_SEC/2);
     }
 }
 
