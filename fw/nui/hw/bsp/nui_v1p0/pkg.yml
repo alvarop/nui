@@ -66,6 +66,12 @@ pkg.deps:
     - "@apache-mynewt-core/hw/mcu/nordic/nrf52xxx"
     - "@apache-mynewt-core/libc/baselibc"
 
+# TODO - Add this to apache-mynewt-core/hw/mcu/nordic/pkg.yml
+# and use a BSP_NRF52810 define
+pkg.ign_files:
+    - "hal_spi.c"
+    - "hal_i2c.c"
+
 pkg.deps.BLE_DEVICE:
     - "@apache-mynewt-core/hw/drivers/nimble/nrf52"
 
