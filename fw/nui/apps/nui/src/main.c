@@ -24,7 +24,7 @@ typedef struct {
 } edge_t;
 
 static nrfx_spim_t spi_dev = NRFX_SPIM_INSTANCE(0);
-static uint8_t volume = 128;
+static uint8_t volume = 164;
 static bool mute = false;
 
 // Maximum number of pulse edges to store
@@ -60,6 +60,7 @@ static void ir_irq(void *arg) {
         hal_timer_stop(&ir_timeout_timer);
         hal_timer_start(&ir_timeout_timer, TIMEOUT_US);
     }
+
 }
 
 // NEC Decoding state machine states
@@ -210,7 +211,7 @@ static void process_ir_command(uint32_t command, uint16_t num_edges) {
         }
         default: {
             // Do something with other codes?
-            // console_printf("%08lX - %ld\n", command, num_edges);
+            // console_printf("%08lX - %d\n", command, num_edges);
         }
     }
 }
@@ -246,8 +247,6 @@ void nui_task_func(void *arg) {
     err = os_mutex_init(&ir_processing_mutex);
     assert(err == OS_OK);
 
-    hal_gpio_init_out(LED_BLINK_PIN, 1);
-
     hal_gpio_irq_init(IR_IN_PIN, ir_irq, NULL,
         HAL_GPIO_TRIG_BOTH, HAL_GPIO_PULL_NONE);
 
@@ -263,7 +262,6 @@ void nui_task_func(void *arg) {
     hal_gpio_irq_enable(IR_IN_PIN);
 
     hal_gpio_init_out(MUTE_N_PIN, 1);
-    hal_gpio_init_out(MISO_PIN, 0);
     hal_gpio_init_out(SCK_PIN, 0);
     hal_gpio_init_out(MOSI_PIN, 0);
     hal_gpio_init_out(CS_N_PIN, 1);
@@ -275,9 +273,15 @@ void nui_task_func(void *arg) {
     spi_config.mosi_pin = MOSI_PIN;
     spi_config.miso_pin = MISO_PIN;
 
+    // Workaround for NRFX_SPIM library bug.
+    // If NRFX_SPIM_PIN_NOT_USED is used, the library takes it as 'pin 0'
+    // and continues using it as a SS pin
+    // Pin 2 is not connected on the 32-pin package
+    spi_config.ss_pin = 2;
+
     uint32_t rval = nrfx_spim_init(&spi_dev, &spi_config, NULL, NULL);
     if (rval != NRFX_SUCCESS) {
-        console_printf("spim_init=%08lX\n", rval);
+        console_printf("spim_init error %08lX\n", rval);
     } else {
         console_printf("spim_init successfull\n");
     }
@@ -286,8 +290,7 @@ void nui_task_func(void *arg) {
     update_volume();
 
     while (1) {
-        hal_gpio_toggle(LED_BLINK_PIN);
-        os_time_delay(OS_TICKS_PER_SEC/2);
+        os_time_delay(OS_TICKS_PER_SEC*100);
     }
 }
 
