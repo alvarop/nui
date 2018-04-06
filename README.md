@@ -4,7 +4,7 @@
 
 Nui is an IR(evntually also BLE) controlled volume controller for analog audio. It sits between your audio source and speakers and can amplify or reduce the volume using IR commands (and evntually BLE).
 
-![Nui v1.0](/images/nui_v1p0.jpg)
+![Nui v1.0](nui_v1p0.jpg)
 
 Why do I need this, you may ask?
 
