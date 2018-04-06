@@ -24,7 +24,7 @@ typedef struct {
 } edge_t;
 
 static nrfx_spim_t spi_dev = NRFX_SPIM_INSTANCE(0);
-static uint8_t volume = 164;
+static uint8_t current_volume = 164;
 static bool mute = false;
 
 // Maximum number of pulse edges to store
@@ -169,7 +169,7 @@ typedef enum {
   AUX_MUTE = 0x4BB6A05F
 } commands_t;
 
-void update_volume() {
+void set_volume(uint8_t volume) {
     uint8_t vol[2] = {volume, volume};
     nrfx_spim_xfer_desc_t xfer = NRFX_SPIM_XFER_TX(&vol, sizeof(vol));
     hal_gpio_write(CS_N_PIN, 0);
@@ -185,27 +185,27 @@ static void process_ir_command(uint32_t command, uint16_t num_edges) {
     switch (command) {
         case AUX_VOL_DOWN: {
             console_printf("Volume down!\n");
-            if (volume > 0) {
-                volume--;
+            if (current_volume > 0) {
+                current_volume--;
             }
-            update_volume();
+            set_volume(current_volume);
             break;
         }
         case AUX_VOL_UP: {
             console_printf("Volume up!\n");
-            if (volume < 255) {
-                volume++;
+            if (current_volume < 255) {
+                current_volume++;
             }
-            update_volume();
+            set_volume(current_volume);
             break;
         }
         case AUX_MUTE: {
             console_printf("Mute!\n");
             mute = !mute;
             if(mute) {
-                hal_gpio_write(MUTE_N_PIN, 0);
+                set_volume(0);
             } else {
-                hal_gpio_write(MUTE_N_PIN, 1);
+                set_volume(current_volume);
             }
             break;
         }
@@ -287,7 +287,7 @@ void nui_task_func(void *arg) {
     }
 
     // Set initial volume
-    update_volume();
+    set_volume(current_volume);
 
     while (1) {
         os_time_delay(OS_TICKS_PER_SEC*100);
